@@ -11,14 +11,32 @@ def PrintAcsiiArt():
     """
     print(acsiiArt)
 
-graph = Graph("bolt://localhost:7690", auth=("neo4j", "password")) 
+# Connect to the Neo4j database
+graph = Graph("bolt://localhost:7690", auth=("neo4j", "password"))
 
-def get_existing_treatment_info(disease_id):
+def format_disease_id(user_input_):
+    print("\nEntered:", user_input_)
+    
+    if (user_input_[14:].isnumeric() and 
+        user_input_[0:7].isalpha() and  
+        user_input_[9:13].isalpha()):
+        
+        formatted_input = (user_input_[0].upper() +  
+                           user_input_[1:7].lower() + "::" + 
+                           user_input_[9:13].upper() + ":" + 
+                           user_input_[14:])
+        print("Formatted:", formatted_input)
+        return formatted_input
+    else:
+        retry_input = input("\nEnter a valid disease ID in the format 'Disease::[A-Za-z]:[0-9]': ")
+        return format_disease_id(retry_input)
+
+def getExistingTreatmentInfo(disease_id):
     query = f"""
     MATCH (d:Disease {{id: '{disease_id}'}})
-    MATCH (d)-[:DaG]->(g:Gene)  // Disease associates with Gene
-    MATCH (a:Anatomy)<-[:DlA]-(d)  // Anatomy localizes Disease
-    MATCH (c:Compound)-[:CtD|CpD]->(d)  //treat or palliate this disease
+    MATCH (d)-[:DaG]->(g:Gene)
+    MATCH (a:Anatomy)<-[:DlA]-(d)
+    MATCH (c:Compound)-[:CtD|CpD]->(d)
     RETURN d.name AS disease_name, 
            COLLECT(DISTINCT c.name) AS drugs, 
            COLLECT(DISTINCT g.name) AS gene_names, 
@@ -28,13 +46,13 @@ def get_existing_treatment_info(disease_id):
     result = graph.run(query)
     return result.data()
 
-def get_new_treatment_compounds(disease_id):
+def getNewTreatmentCompounds(disease_id):
     query = f"""
     MATCH (d:Disease {{id: '{disease_id}'}})
-    MATCH (d)-[:DlA]->(a:Anatomy)  // Disease is localized in anatomy
-    MATCH (a)-[:AuG]->(g:Gene)  // Anatomy up-regulates a gene
-    MATCH (c:Compound)-[:CdG]->(g)  // Compound down-regulates/up-regulates the gene
-    WHERE NOT (c)-[:CtD]->(d) AND NOT (c)-[:CpD]->(d)  // Compound doesn't already treat/palliate the disease
+    MATCH (d)-[:DlA]->(a:Anatomy)
+    MATCH (a)-[:AuG]->(g:Gene)
+    MATCH (c:Compound)-[:CdG]->(g)
+    WHERE NOT (c)-[:CtD]->(d) AND NOT (c)-[:CpD]->(d)
     RETURN COLLECT(DISTINCT c.name) AS new_treatment_compounds
     """
     
@@ -45,14 +63,16 @@ def main():
     print("Welcome to the Hetionet, a heterogeneous information network (HETNET) for biomedical information.")
     
     while True:
-        disease_id = input("Enter Disease ID (or type 'exit' to quit): ")
-        if disease_id.lower() == 'exit':
+        user_input = input("\nEnter Disease ID (or type 'exit' to quit): ")
+        if user_input.lower() == 'exit':
             break
         
-        queryOption = input("(1) Get existing disease info \n (2) Get new treatment compounds \n\n Please selection an option: ")
-        # Query 1: Gets existing treatment info
+        disease_id = format_disease_id(user_input)
+        
+        queryOption = input("\n\n(1) Get existing disease info \n (2) Get new treatment compounds \n\n Please select an option: ")
+        
         if queryOption == "1":
-            existing_info = get_existing_treatment_info(disease_id)
+            existing_info = getExistingTreatmentInfo(disease_id)
             if existing_info:
                 info = existing_info[0]
                 print("\nDisease Name:", info['disease_name'])
@@ -65,9 +85,8 @@ def main():
             else:
                 print("No existing treatments found for the disease ID.")
         
-        # Query 2: Gets new treatment compounds
         if queryOption == "2":
-            new_treatments = get_new_treatment_compounds(disease_id)
+            new_treatments = getNewTreatmentCompounds(disease_id)
             if new_treatments and new_treatments[0]['new_treatment_compounds']:
                 new_drugs = new_treatments[0]['new_treatment_compounds']
                 print("\nNew Compound count:", len(new_drugs))
